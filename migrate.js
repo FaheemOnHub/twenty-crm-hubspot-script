@@ -1,9 +1,11 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import readline from "readline";
 dotenv.config();
 const hubspotApiKey = process.env.HUBSPOT_API_KEY;
 const twentyApiKey = process.env.TWENTY_API_KEY;
 const no_of_contacts = process.env.contact_length;
+
 async function fetchHubSpotContacs(after = null) {
   try {
     let url =
@@ -25,7 +27,7 @@ async function fetchHubSpotContacs(after = null) {
     );
     const contacts = response.data.results;
     const nextPage = response.data.paging?.next?.after || null;
-    // console.log(response.data.results);
+
     return { contacts, nextPage };
   } catch (error) {
     console.log(error);
@@ -40,33 +42,34 @@ function mapDataToTwentyFormat(hubspotData) {
       },
       emails: {
         primaryEmail: contact.properties.email || "No Email",
-        additionalEmails: [], // Add additional emails if available
+        additionalEmails: [],
       },
       linkedinLink: {
-        primaryLinkLabel: "LinkedIn", // Replace with actual label if available
-        primaryLinkUrl: "", // Replace with actual URL if available
-        secondaryLinks: [], // Add secondary links if available
+        primaryLinkLabel: "LinkedIn",
+        primaryLinkUrl: "",
+        secondaryLinks: [],
       },
       xLink: {
-        primaryLinkLabel: "X Link", // Replace with actual label if available
-        primaryLinkUrl: "", // Replace with actual URL if available
-        secondaryLinks: [], // Add secondary links if available
+        primaryLinkLabel: "X Link",
+        primaryLinkUrl: "",
+        secondaryLinks: [],
       },
-      jobTitle: "No Job Title", // Replace with actual job title if available
+      jobTitle: "No Job Title",
       phones: {
         primaryPhoneNumber: contact.properties.phone || "No Phone Number",
-        primaryPhoneCountryCode: "US", // Replace with the correct country code if available
-        additionalPhones: [], // Add additional phone numbers if available
+        primaryPhoneCountryCode: "US",
+        additionalPhones: [],
       },
-      city: "No City", // Replace with actual city if available
-      avatarUrl: "", // Replace with actual avatar URL if available
-      position: 0, // Set the position or any other necessary field
-      createdBy: { source: "EMAIL" }, // or another source as appropriate
-      companyId: null, // Replace with actual company ID if available
+      city: "No City",
+      avatarUrl: "",
+      position: 0,
+      createdBy: { source: "EMAIL" },
+      companyId: null,
     };
   });
 }
 async function sendToTwentyCRM(mappedData) {
+  const uniqueContacts = [];
   for (const contact of mappedData) {
     const existingContact = await checkContactInTwenty(
       contact.name.firstName,
@@ -74,28 +77,30 @@ async function sendToTwentyCRM(mappedData) {
     );
     if (existingContact) {
       console.log(
-        `Contact with email ${contact.name.firstName} already exists. Skipping.`
+        `Contact with name ${
+          contact.name.firstName + contact.name.lastName
+        } already exists. Skipping.`
       );
-      continue; // Skip inserting the duplicate contact
+      continue;
     }
-    const options = {
-      method: "POST",
-      url: "https://api.twenty.com/rest/batch/people",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${twentyApiKey}`, // Ensure this is the correct Bearer token
-      },
-      data: contact, // Use the mapped data
-    };
+    uniqueContacts.push(contact);
+  }
+  const options = {
+    method: "POST",
+    url: "https://api.twenty.com/rest/batch/people",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${twentyApiKey}`,
+    },
+    data: uniqueContacts,
+  };
 
-    try {
-      const { data } = await axios.request(options);
-      console.log("Contacts migrated successfully:", data);
-    } catch (error) {
-      console.error("Error migrating contacts:", error.message);
-      // console.error(error);
-    }
+  try {
+    const { data } = await axios.request(options);
+    console.log("Contacts migrated successfully:", data);
+  } catch (error) {
+    console.error("Error migrating contacts:", error.message);
   }
 }
 
@@ -125,44 +130,35 @@ async function checkContactInTwenty(firstName, lastName) {
     method: "GET",
     url: "https://api.twenty.com/rest/people",
     params: {
-      filter: `name.firstName[eq]:${firstName}`,
-      filter: `name.lastName[eq]:${lastName}`,
+      filter: `name.firstName[eq]:${firstName},name.lastName[eq]:${lastName}`,
+      // filter: `emails.primaryEmail[eq]:${email}`, :use email filter if your contacts has email
     },
+
     headers: {
       Accept: "application/json",
-      Authorization:
-        "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5OWM5ZjE2Ni1lZDM1LTRhMTgtYjMzYi0zZmJlNzA4ZDY1YzYiLCJpYXQiOjE3Mjk1Mjg0MzgsImV4cCI6NDg4MzEyODQzNywianRpIjoiOWJlOWVhZjMtM2VmOC00OWE2LWFjNDMtYmVjNTY4Y2JkNDBjIn0.SOlEYp1wL3lD1Hs3hXzQSQJUIyxaS0iPHtJe3UH89tc",
+      Authorization: `Bearer ${twentyApiKey}`,
     },
   };
   try {
     const response = await axios.request(options);
-    console.log(response.data.totalCount);
+
     if (response.data.totalCount > 0) {
       return response.data;
     }
-    return response.data; // Return existing contact if found
   } catch (error) {
-    return null; // Return null if not found
+    return null;
   }
 }
 
-main();
-// checkContactInTwenty();
-//   const options = {
-//     method: "GET",
-//     url: "https://api.twenty.com/rest/people",
-//     headers: {
-//       Accept: "application/json",
-//       Authorization:
-//         "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5OWM5ZjE2Ni1lZDM1LTRhMTgtYjMzYi0zZmJlNzA4ZDY1YzYiLCJpYXQiOjE3Mjk1Mjg0MzgsImV4cCI6NDg4MzEyODQzNywianRpIjoiOWJlOWVhZjMtM2VmOC00OWE2LWFjNDMtYmVjNTY4Y2JkNDBjIn0.SOlEYp1wL3lD1Hs3hXzQSQJUIyxaS0iPHtJe3UH89tc",
-//     },
-//   };
-
-//   try {
-//     const { data } = await axios.request(options);
-//     console.log(data.data.people);
-//   } catch (error) {
-//     console.error(error);
-//   }
-// }
-// test();
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+rl.question("Do you want to start the script (yes/no)", (answer) => {
+  if (answer.toLowerCase() === "yes") {
+    main();
+  } else {
+    console.log("Script not started.");
+  }
+  rl.close();
+});
