@@ -68,23 +68,29 @@ function mapDataToTwentyFormat(hubspotData) {
     };
   });
 }
-async function sendToTwentyCRM(mappedData) {
+async function sendToTwentyCRM(mappedData, checkDuplicates) {
   const uniqueContacts = [];
-  for (const contact of mappedData) {
-    const existingContact = await checkContactInTwenty(
-      contact.name.firstName,
-      contact.name.lastName
-    );
-    if (existingContact) {
-      console.log(
-        `Contact with name ${
-          contact.name.firstName + contact.name.lastName
-        } already exists. Skipping.`
+  if (checkDuplicates) {
+    for (const contact of mappedData) {
+      const existingContact = await checkContactInTwenty(
+        contact.name.firstName,
+        contact.name.lastName
       );
-      continue;
+      if (existingContact) {
+        console.log(
+          `Contact with name ${
+            contact.name.firstName + contact.name.lastName
+          } already exists. Skipping.`
+        );
+        continue;
+      }
+      uniqueContacts.push(contact);
     }
-    uniqueContacts.push(contact);
+  } else {
+    console.log("Skipping duplicate check, migrating all contacts.");
+    uniqueContacts.push(...mappedData);
   }
+
   const options = {
     method: "POST",
     url: "https://api.twenty.com/rest/batch/people",
@@ -119,10 +125,10 @@ async function syncAllContacts() {
   } while (after);
   return allContacts;
 }
-async function main() {
+async function main(checkDuplicates) {
   const allHubSpotContacts = await syncAllContacts();
   const convertTotwentyForm = await mapDataToTwentyFormat(allHubSpotContacts);
-  await sendToTwentyCRM(convertTotwentyForm);
+  await sendToTwentyCRM(convertTotwentyForm, checkDuplicates);
 }
 
 async function checkContactInTwenty(firstName, lastName) {
@@ -154,11 +160,17 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
-rl.question("Do you want to start the script (yes/no)", (answer) => {
-  if (answer.toLowerCase() === "yes") {
-    main();
-  } else {
-    console.log("Script not started.");
+rl.question(
+  "Do you want to check for duplicates before migrating? (yes/no): ",
+  (answer) => {
+    const checkDuplicates = answer.toLowerCase() === "yes";
+    rl.question("Do you want to start the script (yes/no): ", (startAnswer) => {
+      if (startAnswer.toLowerCase() === "yes") {
+        main(checkDuplicates);
+      } else {
+        console.log("Script not started.");
+      }
+      rl.close();
+    });
   }
-  rl.close();
-});
+);
